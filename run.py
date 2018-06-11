@@ -1,4 +1,4 @@
-from preprocess import get_training_data, get_embedding_matrix
+from preprocess import get_training_data, get_embedding_matrix, create_train_dev_test_set
 from config import network_config
 from keras.preprocessing.text import Tokenizer
 
@@ -17,6 +17,7 @@ if __name__ == '__main__':
 
     # create documents list
     documents = []
+    maxLen = 0
     for sentence in sentences:
         documents.append(sentence.rstrip('.').split(" "))
 
@@ -31,4 +32,6 @@ if __name__ == '__main__':
 
     # Generate the embedding matrix
     embedding_matrix = get_embedding_matrix(word_to_idx, documents)
-            
+
+    # Create training, validation and test set
+    train_dev_test_dict = create_train_dev_test_set(tokenizer, sentences1, sentences2, sim_score)            
