@@ -4,6 +4,55 @@ from gensim.models import Word2Vec
 import numpy as np
 import os.path
 import random
+import math
+import re
+
+def text_to_word_list(text):
+    ''' 
+    Pre process and convert texts to a list of words 
+    Arguments:
+        text: text string
+    Returns:
+        text: List of string words
+    '''
+
+    text = str(text)
+    text = text.lower()
+
+    # Clean the text
+    text = re.sub(r"[^A-Za-z0-9^,!.\/'+-=]", " ", text)
+    text = re.sub(r"what's", "what is ", text)
+    text = re.sub(r"\'s", " ", text)
+    text = re.sub(r"\'ve", " have ", text)
+    text = re.sub(r"can't", "cannot ", text)
+    text = re.sub(r"n't", " not ", text)
+    text = re.sub(r"i'm", "i am ", text)
+    text = re.sub(r"\'re", " are ", text)
+    text = re.sub(r"\'d", " would ", text)
+    text = re.sub(r"\'ll", " will ", text)
+    text = re.sub(r",", " ", text)
+    text = re.sub(r"\.", " ", text)
+    text = re.sub(r"!", " ! ", text)
+    text = re.sub(r"\/", " ", text)
+    text = re.sub(r"\^", " ^ ", text)
+    text = re.sub(r"\+", " + ", text)
+    text = re.sub(r"\-", " - ", text)
+    text = re.sub(r"\=", " = ", text)
+    text = re.sub(r"'", " ", text)
+    text = re.sub(r"(\d+)(k)", r"\g<1>000", text)
+    text = re.sub(r":", " : ", text)
+    text = re.sub(r" e g ", " eg ", text)
+    text = re.sub(r" b g ", " bg ", text)
+    text = re.sub(r" u s ", " american ", text)
+    text = re.sub(r"\0s", "0", text)
+    text = re.sub(r" 9 11 ", "911", text)
+    text = re.sub(r"e - mail", "email", text)
+    text = re.sub(r"j k", "jk", text)
+    text = re.sub(r"\s{2,}", " ", text)
+
+    text = text.split()
+
+    return text
 
 def get_training_data(path):
     '''
@@ -35,7 +84,7 @@ def get_embedding_vectors(documents, embedding_dim):
         word_vectors: word vectors
     '''
 
-    model = Word2Vec(documents, min_count=1, size=embedding_dim)
+    model = Word2Vec(documents, iter=10, min_count=1, size=embedding_dim)
     model.save('static/model.bin')
     return model.wv
 
@@ -56,15 +105,18 @@ def get_embedding_matrix(word_to_idx, documents):
     else: 
         word_vectors = get_embedding_vectors(documents, embedding_dim)
     vocab_size = len(word_to_idx)
-    embedding_matrix = np.zeros((len(word_vectors.vocab), embedding_dim))
+    embedding_matrix = np.zeros((len(word_vectors.vocab)+1, embedding_dim))
     print 'vocab size = %d' % vocab_size
     print 'Number of word vectors = %d' % len(word_vectors.vocab)
     print 'Dimensions of embedding matrix = %s' % str(embedding_matrix.shape)
- 
-    for i in range(len(model.wv.vocab)):
-        embedding_vector = model.wv[model.wv.index2word[i]]
+    
+    for key, value in word_to_idx.iteritems():
+        if value == 0:
+            print key
+            continue 
+        embedding_vector = word_vectors[key]
         if embedding_vector is not None:
-            embedding_matrix[i] = embedding_vector
+            embedding_matrix[value] = embedding_vector
     
     return embedding_matrix
 
@@ -88,12 +140,12 @@ def create_train_dev_test_set(tokenizer, sentences1, sentences2, sim_score):
     train_sentences_1 = tokenizer.texts_to_sequences(sentences1)
     train_sentences_2 = tokenizer.texts_to_sequences(sentences2)
 
-    padded_sentences_1 = pad_sequences(train_sentences_1, maxlen=maxLen)
-    padded_sentences_2 = pad_sequences(train_sentences_2, maxlen=maxLen)
+    padded_sentences_1 = pad_sequences(train_sentences_1, padding='pre', truncating='post', maxlen=maxLen)
+    padded_sentences_2 = pad_sequences(train_sentences_2, padding='pre', truncating='post', maxlen=maxLen)
     training_labels = np.asarray(sim_score)
 
-    max_train_idx = train_split_ratio*num_training_examples
-    max_validation_idx = validation_split_ratio*num_training_examples
+    max_train_idx = int(train_split_ratio*num_training_examples)
+    max_validation_idx = int(validation_split_ratio*num_training_examples)
 
     shuffle_indices = range(0, num_training_examples)
     random.shuffle(shuffle_indices)
@@ -117,7 +169,7 @@ def create_train_dev_test_set(tokenizer, sentences1, sentences2, sim_score):
     train_dev_test_dict = {}
     train_dev_test_dict['training_set_1'] = training_set_1
     train_dev_test_dict['training_set_2'] = training_set_2
-    train_dev_test_dict['training_lables'] = training_lables
+    train_dev_test_dict['training_lables'] = train_labels
     train_dev_test_dict['validation_set_1'] = validation_set_1
     train_dev_test_dict['validation_set_2'] = validation_set_2
     train_dev_test_dict['validation_labels'] = validation_labels
@@ -126,6 +178,3 @@ def create_train_dev_test_set(tokenizer, sentences1, sentences2, sim_score):
     train_dev_test_dict['test_labels'] = test_labels
 
     return train_dev_test_dict
-    
-    
-     
