@@ -1,10 +1,11 @@
 from keras.preprocessing.sequence import pad_sequences
 from config import network_config
 from gensim.models import Word2Vec
+from gensim.models import KeyedVectors
 import numpy as np
+import pandas as pd
 import os.path
 import random
-import math
 import re
 
 def text_to_word_list(text):
@@ -64,15 +65,9 @@ def get_training_data(path):
     '''
 
     # Read the training dataset
-    data = []
+    df = pd.read_csv(path)
 
-    with open(path) as fp:
-        lines = fp.readlines()
-
-    for line in lines:
-        data.append(line.split('\t'))
-
-    return data
+    return df
 
 def get_embedding_vectors(documents, embedding_dim):
     '''
@@ -88,37 +83,48 @@ def get_embedding_vectors(documents, embedding_dim):
     model.save('static/model.bin')
     return model.wv
 
-def get_embedding_matrix(word_to_idx, documents):
+def get_embedding_matrix(word_to_idx, documents, flag):
     '''
     Function to generate word2vec embedding matrix
     Arguments:
         word_to_idx: word to index dictionary
         documents: List of sentences
+        flag: flag to get pre-trained vectors
     Returns:
         embedding matrix
     '''
+    
+    if flag == False:
+        embedding_dim = network_config['embedding_dim']
+        if os.path.isfile('static/model.bin'):
+            model=Word2Vec.load('static/model.bin')
+            word_vectors = model.wv
+        else: 
+            word_vectors = get_embedding_vectors(documents, embedding_dim)
+        vocab_size = len(word_to_idx)
+        embedding_matrix = np.zeros((len(word_vectors.vocab)+1, embedding_dim))
+        print 'vocab size = %d' % vocab_size
+        print 'Number of word vectors = %d' % len(word_vectors.vocab)
+        print 'Dimensions of embedding matrix = %s' % str(embedding_matrix.shape)
+    
+        for key, value in word_to_idx.iteritems():
+            embedding_vector = word_vectors[key]
+            if embedding_vector is not None:
+                embedding_matrix[value] = embedding_vector
+    else:
+        print 'Generating Embedding matrix from pretrained word vectors'
+        embedding_file = './data/GoogleNews-vectors-negative300.bin.gz'
+        word2vec = KeyedVectors.load_word2vec_format(embedding_file, binary=True)
+        embedding_dim = network_config['embedding_dim']
+        embedding_matrix = 1 * np.random.randn(len(word_to_idx) + 1, embedding_dim)
+        embedding_matrix[0] = 0
 
-    embedding_dim = network_config['embedding_dim']
-    if os.path.isfile('static/model.bin'):
-        model=Word2Vec.load('static/model.bin')
-        word_vectors = model.wv
-    else: 
-        word_vectors = get_embedding_vectors(documents, embedding_dim)
-    vocab_size = len(word_to_idx)
-    embedding_matrix = np.zeros((len(word_vectors.vocab)+1, embedding_dim))
-    print 'vocab size = %d' % vocab_size
-    print 'Number of word vectors = %d' % len(word_vectors.vocab)
-    print 'Dimensions of embedding matrix = %s' % str(embedding_matrix.shape)
-    
-    for key, value in word_to_idx.iteritems():
-        if value == 0:
-            print key
-            continue 
-        embedding_vector = word_vectors[key]
-        if embedding_vector is not None:
-            embedding_matrix[value] = embedding_vector
-    
-    return embedding_matrix
+        # Build the embedding matrix
+        for word, index in word_to_idx.iteritems():
+            if word in word2vec.vocab:
+                embedding_matrix[index] = word2vec.word_vec(word)
+
+    return embedding_matrix, word2vec
 
 def create_train_dev_test_set(tokenizer, sentences1, sentences2, sim_score):
     '''
@@ -133,8 +139,7 @@ def create_train_dev_test_set(tokenizer, sentences1, sentences2, sim_score):
     '''
    
     maxLen = network_config['maxLen']
-    train_split_ratio = network_config['train_split_ratio']
-    validation_split_ratio = network_config['validation_split_ratio']
+    train_validation_split_ratio = network_config['train_validation_split_ratio']
     num_training_examples = len(sentences1)
 
     train_sentences_1 = tokenizer.texts_to_sequences(sentences1)
@@ -144,8 +149,7 @@ def create_train_dev_test_set(tokenizer, sentences1, sentences2, sim_score):
     padded_sentences_2 = pad_sequences(train_sentences_2, padding='pre', truncating='post', maxlen=maxLen)
     training_labels = np.asarray(sim_score)
 
-    max_train_idx = int(train_split_ratio*num_training_examples)
-    max_validation_idx = int(validation_split_ratio*num_training_examples)
+    max_train_idx = int(train_validation_split_ratio*num_training_examples)
 
     shuffle_indices = range(0, num_training_examples)
     random.shuffle(shuffle_indices)
@@ -158,23 +162,16 @@ def create_train_dev_test_set(tokenizer, sentences1, sentences2, sim_score):
     training_set_2 = padded_sentences_2[0:max_train_idx]
     train_labels = training_lables[0:max_train_idx]
 
-    validation_set_1 = padded_sentences_1[max_train_idx:max_validation_idx]
-    validation_set_2 = padded_sentences_2[max_train_idx:max_validation_idx]
-    validation_labels = training_lables[max_train_idx:max_validation_idx]
+    validation_set_1 = padded_sentences_1[max_train_idx:]
+    validation_set_2 = padded_sentences_2[max_train_idx:]
+    validation_labels = training_lables[max_train_idx:]
 
-    test_set_1 = padded_sentences_1[max_validation_idx:]
-    test_set_2 = padded_sentences_2[max_validation_idx:]
-    test_labels = training_lables[max_validation_idx:]
+    train_validation_dict = {}
+    train_validation_dict['training_set_1'] = training_set_1
+    train_validation_dict['training_set_2'] = training_set_2
+    train_validation_dict['training_lables'] = train_labels
+    train_validation_dict['validation_set_1'] = validation_set_1
+    train_validation_dict['validation_set_2'] = validation_set_2
+    train_validation_dict['validation_labels'] = validation_labels
 
-    train_dev_test_dict = {}
-    train_dev_test_dict['training_set_1'] = training_set_1
-    train_dev_test_dict['training_set_2'] = training_set_2
-    train_dev_test_dict['training_lables'] = train_labels
-    train_dev_test_dict['validation_set_1'] = validation_set_1
-    train_dev_test_dict['validation_set_2'] = validation_set_2
-    train_dev_test_dict['validation_labels'] = validation_labels
-    train_dev_test_dict['test_set_1'] = test_set_1
-    train_dev_test_dict['test_set_2'] = test_set_2
-    train_dev_test_dict['test_labels'] = test_labels
-
-    return train_dev_test_dict
+    return train_validation_dict

@@ -6,32 +6,30 @@ from model import BiLSTMNetwork
 if __name__ == '__main__':
    
     # Training data path 
-    path = 'data/train_data.txt'
+    train_data_path = network_config['train_data_file_path']
     
     # Get training data
-    data = get_training_data(path)
+    df = get_training_data(train_data_path)
+    questions1 = list(df['question1'])
+    questions2 = list(df['question2'])
+    sim_score = list(df['is_duplicate'])
+    
+    # Check if lengths of the lists are the same 
+    assert(len(questions1)==len(questions2)==len(sim_score)) 
+   
+    # Preprocess the sentences
+    m = len(questions1)   
+    sentences1 = list()
+    sentences2 = list()
 
-    sentences1, sentences2, sim_score = [], [], []
-    count = 0
+    for i in range(0, m):
+        sentences1.append(text_to_word_list(questions1[i]))
+        sentences2.append(text_to_word_list(questions2[i]))
 
-    for sentence1, sentence2, score in data:
-        sentence1 = text_to_word_list(sentence1)
-        sentence2 = text_to_word_list(sentence2)
-        if len(sentence1) <= 20 and len(sentence2) <= 20:
-            sentences1.append(sentence1)
-            sentences2.append(sentence2)
-            sim_score.append(int(score.strip('\n')))
-            count += 1
+    print 'Corpus length = %d' % m
 
-    print 'Corpus length = %d' % count
-
-    sentences = sentences1 + sentences2 
+    documents = sentences1 + sentences2 
  
-    # create documents list
-    documents = []
-    for sentence in sentences:
-        documents.append(sentence)
-
     # Create the tokenizer
     tokenizer = Tokenizer()
 
@@ -39,13 +37,15 @@ if __name__ == '__main__':
     tokenizer.fit_on_texts(documents)
 
     # Get the word to index dictionary
-    word_to_idx = tokenizer.word_index    
+    word_to_idx = tokenizer.word_index
+    print 'Vocabulary size = %d' % len(word_to_idx)
 
     # Generate the embedding matrix
-    embedding_matrix = get_embedding_matrix(word_to_idx, documents)
+    embedding_matrix, word2vec = get_embedding_matrix(word_to_idx, documents, network_config['pre_trained_vector_flag'])
 
     # Create training, validation and test set
-    train_dev_test_dict = create_train_dev_test_set(tokenizer, sentences1, sentences2, sim_score)        
+    train_validation_dict = create_train_dev_test_set(tokenizer, sentences1, sentences2, sim_score)        
+    
     # Train the model
     lstm_network = BiLSTMNetwork()
-    lstm_network.train_model(train_dev_test_dict, embedding_matrix) 
+    lstm_network.train_model(train_validation_dict, embedding_matrix)

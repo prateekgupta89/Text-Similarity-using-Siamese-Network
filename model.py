@@ -6,6 +6,7 @@ from keras.callbacks import ModelCheckpoint
 from keras.models import Model
 from time import time
 import keras.backend as K
+from keras.optimizers import Adadelta
 import datetime
 
 class BiLSTMNetwork(object):
@@ -15,8 +16,7 @@ class BiLSTMNetwork(object):
         self.embedding_dim = network_config['embedding_dim']
         self.num_lstm_units = network_config['num_lstm_units']
         self.maxLen = network_config['maxLen']
-        selftrain_split_ratio = network_config['train_split_ratio']
-        self.validation_split_ratio = network_config['validation_split_ratio']
+        self.train_split_ratio = network_config['train_validation_split_ratio']
 
     def exponent_neg_manhattan_distance(self, left, right):
         '''
@@ -30,25 +30,22 @@ class BiLSTMNetwork(object):
         
         return K.exp(-K.sum(K.abs(left-right), axis=1, keepdims=True))
 
-    def train_model(self, train_dev_test_dict, embedding_matrix):
+    def train_model(self, train_validation_dict, embedding_matrix):
         '''
         Function to train the model
         Arguments:
-            train_dev_test_dict: dictionary containing training, validation and test set
+            train_validation_dict: dictionary containing training, validation and test set
             embedding_matrix: embedding matrix containing word vectors
         Returns:
             model: trained Bidirectional LSTM model
         '''
 
-        training_set_1 = train_dev_test_dict['training_set_1']
-        training_set_2 = train_dev_test_dict['training_set_2']
-        training_labels = train_dev_test_dict['training_lables']
-        validation_set_1 = train_dev_test_dict['validation_set_1']
-        validation_set_2 = train_dev_test_dict['validation_set_2']
-        validation_labels = train_dev_test_dict['validation_labels']
-        test_set_1 = train_dev_test_dict['test_set_1']
-        test_set_2 = train_dev_test_dict['test_set_2']
-        test_labels = train_dev_test_dict['test_labels']
+        training_set_1 = train_validation_dict['training_set_1']
+        training_set_2 = train_validation_dict['training_set_2']
+        training_labels = train_validation_dict['training_lables']
+        validation_set_1 = train_validation_dict['validation_set_1']
+        validation_set_2 = train_validation_dict['validation_set_2']
+        validation_labels = train_validation_dict['validation_labels']
 
         # Define input to computational graph
         x1 = Input(shape=(self.maxLen,), dtype='int32') 
@@ -69,11 +66,11 @@ class BiLSTMNetwork(object):
         encoded_sequence_2 = lstm_encoder(embedded_sequence_2)
        
         # Calculates the distance as defined by the MaLSTM model
-        malstm_distance = Merge(mode=lambda x: self.exponent_neg_manhattan_distance(x[0], x[1]), output_shape=lambda x: (x[0][0], 1))([encoded_sequence_1, encoded_sequence_2]) 
+        malstm_distance = Merge(mode=lambda x: self.exponent_neg_manhattan_distance(x[0], x[1]), output_shape=lambda x: (x[0][0], 1))([encoded_sequence_1, encoded_sequence_2])
 
         # Create the model
-        model = Model(inputs=[x1, x2], outputs=malstm_distance)
-        
+        model = Model(inputs=[x1, x2], outputs=[malstm_distance])
+       
         # Compile the model
         model.compile(loss='mean_squared_error', optimizer='adam', metrics=['acc'])
 
@@ -89,6 +86,6 @@ class BiLSTMNetwork(object):
         # Start training
         training_start_time = time()
         
-        model.fit([training_set_1, training_set_1], training_labels, validation_data=([validation_set_1, validation_set_1], validation_labels), epochs=100, batch_size=128, shuffle=True, callbacks=callbacks)
+        model.fit([training_set_1, training_set_2], training_labels, validation_data=([validation_set_1, validation_set_2], validation_labels), epochs=30, batch_size=128, shuffle=True, callbacks=callbacks)
 
         print "Training time finished.\n{} epochs in {}".format(n_epoch, datetime.timedelta(seconds=time()-training_start_time)) 
